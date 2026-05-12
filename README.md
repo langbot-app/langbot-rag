@@ -108,3 +108,14 @@ Configure `DEBUG_RUNTIME_WS_URL` and `PLUGIN_DEBUG_KEY` in `.env`, then launch w
 ## Links
 
 - [LangBot Documentation](https://docs.langbot.app/)
+
+## Contributing
+
+We welcome contributions! Feel free to:
+
+- Submit issues for bugs or feature requests
+- Fork the repo and submit pull requests
+- Improve documentation or add examples
+- Share your ideas and feedback
+
+Star the repo if you find it useful!
