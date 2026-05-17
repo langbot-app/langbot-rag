@@ -105,6 +105,39 @@ cp .env.example .env
 
 Configure `DEBUG_RUNTIME_WS_URL` and `PLUGIN_DEBUG_KEY` in `.env`, then launch with your IDE debugger.
 
+### Testing
+
+```bash
+python3 -m unittest discover -s tests
+```
+
+### Offline Benchmarks
+
+```bash
+python3 -m benchmarks.run
+```
+
+Benchmark datasets, experiment configs, deterministic local adapters, and metric
+code are stored in `benchmarks/`. Runs write traceable `results.json` files under
+`benchmarks/runs/`.
+
+Parser integration can be benchmarked against the sibling `langbot-parser`
+repository:
+
+```bash
+python3 -m benchmarks.run \
+  --dataset benchmarks/datasets/parser_compare_zh.json \
+  --config benchmarks/configs/parser_compare.json
+```
+
+Harder multi-hop retrieval cases are also available:
+
+```bash
+python3 -m benchmarks.run \
+  --dataset benchmarks/datasets/hard_multihop_zh.json \
+  --config benchmarks/configs/hard_retrieval.json
+```
+
 ## Links
 
 - [LangBot Documentation](https://docs.langbot.app/)

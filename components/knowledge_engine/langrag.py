@@ -76,6 +76,44 @@ class LangRAG(KnowledgeEngine):
         )
         return len(texts)
 
+    @staticmethod
+    def _metadata_int(value) -> int | None:
+        if isinstance(value, bool):
+            return None
+        if isinstance(value, int):
+            return value
+        if isinstance(value, str) and value.isdigit():
+            return int(value)
+        return None
+
+    @staticmethod
+    def _neighbor_id(meta: dict, offset: int) -> str | None:
+        """Build the vector ID for an adjacent retrieval unit.
+
+        The three index strategies use different vector ID schemes.  Context
+        expansion only needs one representative vector per adjacent unit
+        because the stored metadata ``text`` field carries the display context.
+        """
+        doc_id = meta.get("document_id", "")
+        index_type = meta.get("index_type", "chunk")
+
+        if index_type == "parent_child":
+            parent_idx = LangRAG._metadata_int(meta.get("parent_index"))
+            if doc_id and parent_idx is not None and parent_idx + offset >= 0:
+                return f"{doc_id}_p{parent_idx + offset}_c0"
+            return None
+
+        if index_type == "qa":
+            chunk_idx = LangRAG._metadata_int(meta.get("chunk_index"))
+            if doc_id and chunk_idx is not None and chunk_idx + offset >= 0:
+                return f"{doc_id}_{chunk_idx + offset}_qa0"
+            return None
+
+        chunk_idx = LangRAG._metadata_int(meta.get("chunk_index"))
+        if doc_id and chunk_idx is not None and chunk_idx + offset >= 0:
+            return f"{doc_id}_{chunk_idx + offset}"
+        return None
+
     async def _expand_context(
         self,
         results: list[dict],
@@ -84,8 +122,8 @@ class LangRAG(KnowledgeEngine):
     ) -> None:
         """Expand each result with adjacent chunks from the same document.
 
-        For each hit, looks up chunks at chunk_index ± 1..window in the same
-        document and appends their text to the result's metadata as
+        For each hit, looks up adjacent retrieval units from the same document
+        and appends their text to the result's metadata as
         ``context_before`` and ``context_after``.
 
         Requires the vector store to support ``vector_get_by_ids``.  If the
@@ -99,13 +137,13 @@ class LangRAG(KnowledgeEngine):
         # Map result → adjacent IDs needed
         for res in results:
             meta = res.get("metadata", {})
-            doc_id = meta.get("document_id", "")
-            chunk_idx = meta.get("chunk_index")
-            if doc_id and chunk_idx is not None:
-                for offset in range(1, window + 1):
-                    if chunk_idx - offset >= 0:
-                        ids_to_fetch.add(f"{doc_id}_{chunk_idx - offset}")
-                    ids_to_fetch.add(f"{doc_id}_{chunk_idx + offset}")
+            for offset in range(1, window + 1):
+                before_id = self._neighbor_id(meta, -offset)
+                after_id = self._neighbor_id(meta, offset)
+                if before_id:
+                    ids_to_fetch.add(before_id)
+                if after_id:
+                    ids_to_fetch.add(after_id)
 
         if not ids_to_fetch:
             return
@@ -124,22 +162,19 @@ class LangRAG(KnowledgeEngine):
         # Attach context to results
         for res in results:
             meta = res.get("metadata", {})
-            doc_id = meta.get("document_id", "")
-            chunk_idx = meta.get("chunk_index")
-            if doc_id and chunk_idx is not None:
-                before_parts = []
-                after_parts = []
-                for offset in range(1, window + 1):
-                    before_id = f"{doc_id}_{chunk_idx - offset}"
-                    after_id = f"{doc_id}_{chunk_idx + offset}"
-                    if before_id in adj_map:
-                        before_parts.insert(0, adj_map[before_id])
-                    if after_id in adj_map:
-                        after_parts.append(adj_map[after_id])
-                if before_parts:
-                    meta["context_before"] = "\n".join(before_parts)
-                if after_parts:
-                    meta["context_after"] = "\n".join(after_parts)
+            before_parts = []
+            after_parts = []
+            for offset in range(1, window + 1):
+                before_id = self._neighbor_id(meta, -offset)
+                after_id = self._neighbor_id(meta, offset)
+                if before_id in adj_map:
+                    before_parts.insert(0, adj_map[before_id])
+                if after_id in adj_map:
+                    after_parts.append(adj_map[after_id])
+            if before_parts:
+                meta["context_before"] = "\n".join(before_parts)
+            if after_parts:
+                meta["context_after"] = "\n".join(after_parts)
 
     # ========== Core Methods ==========
 
@@ -158,21 +193,8 @@ class LangRAG(KnowledgeEngine):
             f"Ingesting file: {filename} (doc={doc_id}) into collection: {collection_id}"
         )
 
-        # 1. Get file content from Host
         try:
-            content_bytes = await self.plugin.get_knowledge_file_stream(
-                context.file_object.storage_path
-            )
-        except Exception as e:
-            logger.error(f"Failed to get file content: {e}")
-            return IngestionResult(
-                document_id=doc_id,
-                status=DocumentStatus.FAILED,
-                error_message=f"Could not read file: {e}",
-            )
-
-        try:
-            # 2. Parse file content (prefer pre-parsed content from external Parser plugin)
+            # 1. Parse file content (prefer pre-parsed content from external Parser plugin)
             sections = None
             doc_metadata = None
             if context.parsed_content and context.parsed_content.text:
@@ -198,6 +220,17 @@ class LangRAG(KnowledgeEngine):
                     "falling back to internal FileParser. Consider configuring an "
                     "external parser (e.g. GeneralParsers) for better results."
                 )
+                try:
+                    content_bytes = await self.plugin.get_knowledge_file_stream(
+                        context.file_object.storage_path
+                    )
+                except Exception as e:
+                    logger.error(f"Failed to get file content: {e}")
+                    return IngestionResult(
+                        document_id=doc_id,
+                        status=DocumentStatus.FAILED,
+                        error_message=f"Could not read file: {e}",
+                    )
                 parser = FileParser()
                 text_content = await parser.parse(content_bytes, filename)
 

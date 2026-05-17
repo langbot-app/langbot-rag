@@ -58,6 +58,11 @@ def _vector_result_sort_key(result: dict) -> tuple[int, float]:
     return (2, float("inf"))
 
 
+def _uses_vector(search_type) -> bool:
+    """Return whether this search mode needs an embedding vector."""
+    return getattr(search_type, "value", search_type) != "full_text"
+
+
 async def retrieve_with_rewrite(
     plugin,
     query: str,
@@ -111,10 +116,13 @@ async def retrieve_with_rewrite(
         logger.warning(
             f"Unknown query_rewrite strategy: {query_rewrite}, falling back to direct search"
         )
-        query_vectors = await plugin.invoke_embedding(embedding_model_uuid, [query])
+        query_vector: list[float] = []
+        if _uses_vector(search_type):
+            query_vectors = await plugin.invoke_embedding(embedding_model_uuid, [query])
+            query_vector = query_vectors[0]
         return await plugin.vector_search(
             collection_id=collection_id,
-            query_vector=query_vectors[0],
+            query_vector=query_vector,
             top_k=fetch_k,
             filters=filters,
             search_type=search_type,
@@ -138,20 +146,25 @@ async def _retrieve_hyde(
     logger.info(f"[HyDE] Generating hypothetical document for query: {query!r}")
     prompt = HYDE_PROMPT.format(query=query)
     resp = await plugin.invoke_llm(rewrite_llm, [Message(role="user", content=prompt)])
-    hypothetical_doc = _extract_text(resp)
+    hypothetical_doc = _extract_text(resp) or query
     logger.info(f"[HyDE] Hypothetical document:\n{hypothetical_doc}")
-    logger.info("[HyDE] Embedding hypothetical document and searching...")
 
-    hyde_vectors = await plugin.invoke_embedding(
-        embedding_model_uuid, [hypothetical_doc]
-    )
+    query_vector: list[float] = []
+    if _uses_vector(search_type):
+        logger.info("[HyDE] Embedding hypothetical document and searching...")
+        hyde_vectors = await plugin.invoke_embedding(
+            embedding_model_uuid, [hypothetical_doc]
+        )
+        query_vector = hyde_vectors[0]
+    else:
+        logger.info("[HyDE] Searching with hypothetical document text...")
     results = await plugin.vector_search(
         collection_id=collection_id,
-        query_vector=hyde_vectors[0],
+        query_vector=query_vector,
         top_k=fetch_k,
         filters=filters,
         search_type=search_type,
-        query_text=query,
+        query_text=hypothetical_doc,
         vector_weight=vector_weight,
     )
     logger.info(f"[HyDE] Search returned {len(results)} results")
@@ -182,24 +195,28 @@ async def _retrieve_multi_query(
     for i, sq in enumerate(sub_queries):
         logger.info(f"  [{i + 1}] {sq}")
 
-    # Embed original query + sub-queries
+    # Search original query + sub-queries
     all_queries = [query] + sub_queries
     logger.info(
-        f"[Multi-Query] Embedding {len(all_queries)} queries (1 original + {len(sub_queries)} generated)"
+        f"[Multi-Query] Searching {len(all_queries)} queries "
+        f"(1 original + {len(sub_queries)} generated)"
     )
-    all_vectors = await plugin.invoke_embedding(embedding_model_uuid, all_queries)
+    if _uses_vector(search_type):
+        all_vectors = await plugin.invoke_embedding(embedding_model_uuid, all_queries)
+    else:
+        all_vectors = [[] for _ in all_queries]
 
     # Search with each vector and merge results
     seen_ids: set[str] = set()
     merged: list[dict] = []
-    for i, vec in enumerate(all_vectors):
+    for i, (search_query, vec) in enumerate(zip(all_queries, all_vectors)):
         results = await plugin.vector_search(
             collection_id=collection_id,
             query_vector=vec,
             top_k=fetch_k,
             filters=filters,
             search_type=search_type,
-            query_text=query,
+            query_text=search_query,
             vector_weight=vector_weight,
         )
         new_count = sum(1 for r in results if r["id"] not in seen_ids)
@@ -237,20 +254,24 @@ async def _retrieve_step_back(
     logger.info(f"[Step-Back] Generating abstract question for: {query!r}")
     prompt = STEP_BACK_PROMPT.format(query=query)
     resp = await plugin.invoke_llm(rewrite_llm, [Message(role="user", content=prompt)])
-    abstract_query = _extract_text(resp)
+    abstract_query = _extract_text(resp) or query
     logger.info(f"[Step-Back] Abstract query: {abstract_query!r}")
 
-    # Embed both original and abstract queries
-    logger.info("[Step-Back] Embedding original + abstract queries and searching...")
-    both_vectors = await plugin.invoke_embedding(
-        embedding_model_uuid,
-        [query, abstract_query],
-    )
+    # Search with both original and abstract queries
+    both_queries = [query, abstract_query]
+    logger.info("[Step-Back] Searching original + abstract queries...")
+    if _uses_vector(search_type):
+        both_vectors = await plugin.invoke_embedding(
+            embedding_model_uuid,
+            both_queries,
+        )
+    else:
+        both_vectors = [[] for _ in both_queries]
 
     # Search with both vectors and merge
     seen_ids: set[str] = set()
     merged: list[dict] = []
-    for i, vec in enumerate(both_vectors):
+    for i, (search_query, vec) in enumerate(zip(both_queries, both_vectors)):
         label = "original" if i == 0 else "abstract"
         results = await plugin.vector_search(
             collection_id=collection_id,
@@ -258,7 +279,7 @@ async def _retrieve_step_back(
             top_k=fetch_k,
             filters=filters,
             search_type=search_type,
-            query_text=query,
+            query_text=search_query,
             vector_weight=vector_weight,
         )
         new_count = sum(1 for r in results if r["id"] not in seen_ids)
