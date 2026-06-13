@@ -70,6 +70,9 @@ This means LangRAG works best when paired with an external parser plugin.
 | `search_type` | Search mode: `vector`, `full_text`, or `hybrid` | `vector` |
 | `query_rewrite` | Rewrite strategy: `off`, `hyde`, `multi_query`, or `step_back` | `off` |
 | `rewrite_llm_model_uuid` | LLM for query rewriting (when rewrite is enabled) | - |
+| `rerank` | Reranking strategy: `off`, `rerank_model`, or `llm` | `off` |
+| `rerank_model_uuid` | LangBot rerank model for candidate reranking | - |
+| `rerank_llm_model_uuid` | LLM for reranking (legacy LLM mode) | - |
 | `context_window` | Number of adjacent chunks to append around each hit | 0 |
 
 ## Index Strategies

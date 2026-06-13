@@ -196,16 +196,32 @@ spec:
         en_US: Reranking
         zh_Hans: 重排序
       description:
-        en_US: 'Off: no reranking; LLM: use a language model to rerank candidates by relevance'
-        zh_Hans: 'Off：不重排序；LLM：使用大语言模型按相关性重排候选结果'
+        en_US: 'Off: no reranking; Rerank Model: use a LangBot rerank model; LLM: use a language model to rerank candidates by relevance'
+        zh_Hans: 'Off：不重排序；Rerank Model：使用 LangBot 重排序模型；LLM：使用大语言模型按相关性重排候选结果'
       type: select
       required: false
       default: "off"
       options:
         - name: "off"
           label: { en_US: "Off", zh_Hans: "关闭" }
+        - name: "rerank_model"
+          label: { en_US: "Rerank Model", zh_Hans: "重排序模型" }
         - name: "llm"
           label: { en_US: "LLM", zh_Hans: "LLM 重排序" }
+    - name: rerank_model_uuid
+      label:
+        en_US: Rerank Model
+        zh_Hans: 重排序模型
+      description:
+        en_US: LangBot rerank model for reranking retrieved candidates
+        zh_Hans: 用于对检索候选结果重排序的 LangBot 重排序模型
+      type: rerank-model-selector
+      required: false
+      default: ''
+      show_if:
+        field: rerank
+        operator: eq
+        value: "rerank_model"
     - name: rerank_llm_model_uuid
       label:
         en_US: Rerank LLM

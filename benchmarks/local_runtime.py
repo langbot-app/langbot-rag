@@ -205,6 +205,28 @@ class LocalBenchmarkPlugin:
             prompt = str(prompt)
         return _LLMResponse(_local_llm_response(prompt))
 
+    async def invoke_rerank(
+        self,
+        rerank_model_uuid: str,
+        query: str,
+        documents: list[str],
+        top_k: int | None = None,
+        extra_args: dict | None = None,
+    ) -> list[dict]:
+        ranked = sorted(
+            enumerate(documents[:64]),
+            key=lambda item: (lexical_distance(query, item[1]), item[0]),
+        )
+        if top_k is not None:
+            ranked = ranked[:top_k]
+        return [
+            {
+                "index": index,
+                "relevance_score": 1.0 / (1.0 + lexical_distance(query, text)),
+            }
+            for index, text in ranked
+        ]
+
     def vector_count(self, collection_id: str) -> int:
         return len(self.collections.get(collection_id, {}))
 
