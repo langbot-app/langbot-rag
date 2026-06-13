@@ -11,6 +11,7 @@ from langbot_plugin.api.entities.builtin.rag import (
     FileObject,
     IngestionContext,
     ParseResult,
+    RetrievalContext,
 )
 
 
@@ -38,6 +39,40 @@ class RecordingVectorPlugin:
     async def vector_get_by_ids(self, collection_id, ids):
         self.requested_ids = ids
         return [self.items[item_id] for item_id in ids if item_id in self.items]
+
+
+class RecordingRetrievePlugin:
+    def __init__(self):
+        self.search_top_k = None
+        self.rerank_documents = []
+        self.rerank_top_k = None
+
+    async def invoke_embedding(self, embedding_model_uuid, texts):
+        return [[0.0] for _ in texts]
+
+    async def vector_search(self, **kwargs):
+        self.search_top_k = kwargs["top_k"]
+        return [
+            {
+                "id": f"chunk-{i}",
+                "distance": float(i),
+                "metadata": {
+                    "text": f"candidate {i}",
+                    "document_name": "doc.txt",
+                    "chunk_index": i,
+                    "index_type": "chunk",
+                },
+            }
+            for i in range(kwargs["top_k"])
+        ]
+
+    async def invoke_rerank(self, rerank_model_uuid, query, documents, top_k=None):
+        self.rerank_documents = list(documents)
+        self.rerank_top_k = top_k
+        return [
+            {"index": 2, "relevance_score": 0.95},
+            {"index": 0, "relevance_score": 0.5},
+        ]
 
 
 class LangRAGTests(unittest.IsolatedAsyncioTestCase):
@@ -129,6 +164,33 @@ class LangRAGTests(unittest.IsolatedAsyncioTestCase):
             ),
             "doc1_p3_c0",
         )
+
+    async def test_retrieve_uses_host_rerank_model_with_overfetched_candidates(self):
+        engine = LangRAG()
+        plugin = RecordingRetrievePlugin()
+        engine.plugin = plugin
+
+        response = await engine.retrieve(
+            RetrievalContext(
+                query="candidate",
+                knowledge_base_id="kb1",
+                creation_settings={
+                    "embedding_model_uuid": "emb1",
+                    "index_type": "chunk",
+                },
+                retrieval_settings={
+                    "top_k": 2,
+                    "rerank": "rerank_model",
+                    "rerank_model_uuid": "rerank1",
+                },
+            )
+        )
+
+        self.assertEqual(plugin.search_top_k, 6)
+        self.assertEqual(len(plugin.rerank_documents), 6)
+        self.assertEqual(plugin.rerank_top_k, 2)
+        self.assertEqual([entry.id for entry in response.results], ["chunk-2", "chunk-0"])
+        self.assertEqual(response.results[0].score, 0.95)
 
 
 if __name__ == "__main__":

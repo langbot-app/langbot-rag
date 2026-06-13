@@ -16,7 +16,7 @@ from langbot_plugin.api.entities.builtin.rag import (
 
 from .parser import FileParser
 from .query_rewrite import retrieve_with_rewrite
-from .rerank import llm_rerank
+from .rerank import llm_rerank, model_rerank
 from .strategies import get_strategy
 
 logger = logging.getLogger(__name__)
@@ -342,11 +342,20 @@ class LangRAG(KnowledgeEngine):
             f"vector_weight={vector_weight}"
         )
 
-        # For parent_child/qa, over-fetch to allow dedup to still yield top_k.
-        # When LLM reranking is enabled, always over-fetch to give the reranker
-        # a larger candidate pool regardless of strategy.
         rerank_mode = context.retrieval_settings.get("rerank", "off")
-        if index_type in ("parent_child", "qa") or rerank_mode != "off":
+        rerank_llm = context.retrieval_settings.get("rerank_llm_model_uuid", "")
+        rerank_model = context.retrieval_settings.get("rerank_model_uuid", "")
+        rerank_enabled = (
+            rerank_mode == "llm"
+            and bool(rerank_llm)
+        ) or (
+            rerank_mode in ("rerank_model", "model")
+            and bool(rerank_model)
+        )
+
+        # For parent_child/qa, over-fetch to allow dedup to still yield top_k.
+        # When reranking is enabled, keep a larger candidate pool for rerankers.
+        if index_type in ("parent_child", "qa") or rerank_enabled:
             fetch_k = top_k * 3
         else:
             fetch_k = top_k
@@ -393,20 +402,29 @@ class LangRAG(KnowledgeEngine):
                 vector_weight=vector_weight,
             )
 
-        # Post-process (strategy may deduplicate / re-rank)
+        # Post-process (strategy may deduplicate). If reranking is enabled,
+        # preserve the over-fetched pool and let the reranker apply top_k.
         raw_count = len(results)
-        results = strategy.postprocess_results(results, top_k)
+        postprocess_k = fetch_k if rerank_enabled else top_k
+        results = strategy.postprocess_results(results, postprocess_k)
         logger.info(
             f"Retrieve post-process: {raw_count} raw → {len(results)} after dedup "
-            f"(fetch_k={fetch_k})"
+            f"(fetch_k={fetch_k}, postprocess_k={postprocess_k})"
         )
 
-        # LLM reranking — reorder candidates using an LLM for better relevance.
-        rerank_mode = context.retrieval_settings.get("rerank", "off")
-        rerank_llm = context.retrieval_settings.get("rerank_llm_model_uuid", "")
         reranked = False
 
-        if rerank_mode == "llm" and rerank_llm:
+        if rerank_mode in ("rerank_model", "model") and rerank_model:
+            logger.info("[Rerank] Host rerank model enabled")
+            results = await model_rerank(
+                plugin=self.plugin,
+                rerank_model_uuid=rerank_model,
+                query=query,
+                results=results,
+                top_k=top_k,
+            )
+            reranked = True
+        elif rerank_mode == "llm" and rerank_llm:
             logger.info("[Rerank] LLM reranking enabled")
             results = await llm_rerank(
                 plugin=self.plugin,

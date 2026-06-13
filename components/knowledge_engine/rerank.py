@@ -1,9 +1,6 @@
-"""LLM-based listwise reranking for retrieval results.
+"""Reranking helpers for retrieval results.
 
-Sends all candidate passages to an LLM in a single call, asking it to rank
-them by relevance.  This avoids the need for a dedicated reranker model on
-the Host side while still providing a meaningful quality boost over raw
-vector-distance ordering.
+Supports Host-provided rerank models and the legacy LLM listwise reranker.
 """
 
 import logging
@@ -58,6 +55,101 @@ def _parse_ranking(text: str, n: int) -> list[int] | None:
     return indices if indices else None
 
 
+def _candidate_text(res: dict) -> str:
+    """Extract the display text sent to rerankers."""
+    return res.get("metadata", {}).get("text", "") or ""
+
+
+def _apply_ranking(
+    results: list[dict],
+    ranking: list[int],
+    top_k: int,
+    scores_by_index: dict[int, float] | None = None,
+) -> list[dict]:
+    """Apply a candidate index ranking to result dicts."""
+    if len(ranking) < len(results):
+        remaining = [i for i in range(len(results)) if i not in set(ranking)]
+        ranking.extend(remaining)
+
+    reranked = [results[i] for i in ranking[:top_k]]
+
+    # Rewrite distance so downstream sorting stays consistent with reranking.
+    for rank, res in enumerate(reranked):
+        res["distance"] = 0.01 * (rank + 1)
+        if scores_by_index and ranking[rank] in scores_by_index:
+            res["score"] = scores_by_index[ranking[rank]]
+
+    return reranked
+
+
+async def model_rerank(
+    plugin,
+    rerank_model_uuid: str,
+    query: str,
+    results: list[dict],
+    top_k: int,
+) -> list[dict]:
+    """Rerank *results* using a Host rerank model.
+
+    The Host returns score entries with candidate indices. On failure or an
+    unusable response, retrieval falls back to the original order.
+    """
+    if not results:
+        return results
+
+    n = len(results)
+    logger.info(f"[Rerank] Model reranking {n} candidates for query: {query!r}")
+    documents = [_candidate_text(res) for res in results]
+
+    try:
+        scores = await plugin.invoke_rerank(
+            rerank_model_uuid,
+            query,
+            documents,
+            top_k=top_k,
+        )
+    except Exception as e:
+        logger.warning(
+            f"[Rerank] Model rerank call failed, falling back to original order: {e}"
+        )
+        return results[:top_k]
+
+    ranking: list[int] = []
+    scores_by_index: dict[int, float] = {}
+    seen: set[int] = set()
+
+    sorted_scores = sorted(
+        scores,
+        key=lambda item: item.get("relevance_score", 0),
+        reverse=True,
+    )
+    for item in sorted_scores:
+        try:
+            idx = int(item.get("index"))
+        except (TypeError, ValueError):
+            continue
+        if 0 <= idx < n and idx not in seen:
+            seen.add(idx)
+            ranking.append(idx)
+            score = item.get("relevance_score")
+            if isinstance(score, (int, float)):
+                scores_by_index[idx] = float(score)
+
+    if not ranking:
+        logger.warning(
+            "[Rerank] Model rerank returned no valid indices, "
+            "falling back to original order"
+        )
+        return results[:top_k]
+
+    reranked = _apply_ranking(results, ranking, top_k, scores_by_index)
+    logger.info(
+        f"[Rerank] Done: {n} candidates -> top {len(reranked)} "
+        f"(order: {ranking[:top_k]})"
+    )
+    return reranked
+
+
 async def llm_rerank(
     plugin,
     llm_uuid: str,
@@ -79,7 +171,7 @@ async def llm_rerank(
     # Build numbered candidate list
     lines: list[str] = []
     for i, res in enumerate(results):
-        text = (res.get("metadata", {}).get("text", "") or "")[:_PASSAGE_TRUNCATE]
+        text = _candidate_text(res)[:_PASSAGE_TRUNCATE]
         lines.append(f"[{i}] {text}")
     candidates_block = "\n".join(lines)
 
@@ -103,20 +195,9 @@ async def llm_rerank(
         )
         return results[:top_k]
 
-    # If LLM returned fewer indices than n, append the missing ones in their
-    # original order so we never silently drop results.
-    if len(ranking) < n:
-        remaining = [i for i in range(n) if i not in set(ranking)]
-        ranking.extend(remaining)
-
-    reranked = [results[i] for i in ranking[:top_k]]
-
-    # Rewrite distance so downstream sorting stays consistent with LLM ranking.
-    for rank, res in enumerate(reranked):
-        res["distance"] = 0.01 * (rank + 1)
-
+    reranked = _apply_ranking(results, ranking, top_k)
     logger.info(
-        f"[Rerank] Done: {n} candidates → top {len(reranked)} "
+        f"[Rerank] Done: {n} candidates -> top {len(reranked)} "
         f"(order: {ranking[:top_k]})"
     )
     return reranked

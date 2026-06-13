@@ -68,6 +68,9 @@ LangRAG 现在优先使用 LangBot Host 提供的 parser 结果：
 | `search_type` | 检索模式：`vector`、`full_text` 或 `hybrid` | `vector` |
 | `query_rewrite` | 改写策略：`off`、`hyde`、`multi_query` 或 `step_back` | `off` |
 | `rewrite_llm_model_uuid` | 用于查询改写的 LLM（启用改写时） | - |
+| `rerank` | 重排序策略：`off`、`rerank_model` 或 `llm` | `off` |
+| `rerank_model_uuid` | 用于候选结果重排序的 LangBot 重排序模型 | - |
+| `rerank_llm_model_uuid` | 用于重排序的 LLM（旧 LLM 模式） | - |
 | `context_window` | 为每个命中结果追加的相邻 chunk 数量 | 0 |
 
 ## 索引策略
