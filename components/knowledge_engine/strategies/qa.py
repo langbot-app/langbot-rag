@@ -23,7 +23,12 @@ from collections.abc import AsyncGenerator
 from langbot_plugin.api.entities.builtin.provider.message import Message
 
 from .base import IndexStrategy
-from ..chunker import chunk_text, chunk_sections, DEFAULT_CHUNK_SIZE, DEFAULT_CHUNK_OVERLAP
+from ..chunker import (
+    chunk_text,
+    chunk_sections,
+    DEFAULT_CHUNK_SIZE,
+    DEFAULT_CHUNK_OVERLAP,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -203,7 +208,7 @@ class QAStrategy(IndexStrategy):
                     "qa_index": qa_idx,
                     "question": question,
                     "answer": answer,
-                    "text": chunk,
+                    "text": answer,
                     "source_chunk": chunk,
                     "index_type": "qa",
                 }

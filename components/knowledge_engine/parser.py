@@ -18,11 +18,7 @@ import asyncio
 import logging
 from typing import Union, Callable, Any
 
-import PyPDF2
-from docx import Document
 import chardet
-import markdown
-from bs4 import BeautifulSoup
 
 
 logger = logging.getLogger(__name__)
@@ -95,6 +91,8 @@ class FileParser:
         logger.info(f'Parsing PDF file: {filename}')
 
         def _parse_pdf_sync():
+            import PyPDF2
+
             pdf_reader = PyPDF2.PdfReader(io.BytesIO(file_bytes))
             text_content = []
             for page in pdf_reader.pages:
@@ -110,6 +108,8 @@ class FileParser:
         logger.info(f'Parsing DOCX file: {filename}')
 
         def _parse_docx_sync():
+            from docx import Document
+
             doc = Document(io.BytesIO(file_bytes))
             text_content = [paragraph.text for paragraph in doc.paragraphs if paragraph.text.strip()]
             return '\n'.join(text_content)
@@ -126,6 +126,9 @@ class FileParser:
         logger.info(f'Parsing Markdown file: {filename}')
 
         def _parse_markdown_sync():
+            import markdown
+            from bs4 import BeautifulSoup
+
             md_content = file_bytes.decode('utf-8', errors='ignore')
             html_content = markdown.markdown(
                 md_content, extensions=['extra', 'codehilite', 'tables', 'toc', 'fenced_code']
@@ -165,6 +168,8 @@ class FileParser:
         logger.info(f'Parsing HTML file: {filename}')
 
         def _parse_html_sync():
+            from bs4 import BeautifulSoup
+
             html_content = file_bytes.decode('utf-8', errors='ignore')
             soup = BeautifulSoup(html_content, 'html.parser')
             for script_or_style in soup(['script', 'style']):
@@ -196,7 +201,7 @@ class FileParser:
 
         return await self._run_sync(_parse_html_sync)
 
-    def _extract_table_to_markdown_sync(self, table_element: BeautifulSoup) -> str:
+    def _extract_table_to_markdown_sync(self, table_element) -> str:
         """Helper to convert a BeautifulSoup table element into a Markdown table string."""
         headers = [th.get_text().strip() for th in table_element.find_all('th')]
         rows = []
