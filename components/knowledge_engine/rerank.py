@@ -7,6 +7,7 @@ import logging
 import re
 
 from langbot_plugin.api.entities.builtin.provider.message import Message
+from components.observability.telemetry import hash_text
 
 logger = logging.getLogger(__name__)
 
@@ -60,6 +61,11 @@ def _candidate_text(res: dict) -> str:
     return res.get("metadata", {}).get("text", "") or ""
 
 
+def _text_log_ref(text: str | None) -> str:
+    """Return a privacy-preserving text reference for logs."""
+    return f"hash={hash_text(text)}, length={len(text or '')}"
+
+
 def _apply_ranking(
     results: list[dict],
     ranking: list[int],
@@ -98,7 +104,10 @@ async def model_rerank(
         return results
 
     n = len(results)
-    logger.info(f"[Rerank] Model reranking {n} candidates for query: {query!r}")
+    logger.info(
+        f"[Rerank] Model reranking {n} candidates "
+        f"for query_ref=({_text_log_ref(query)})"
+    )
     documents = [_candidate_text(res) for res in results]
 
     try:
@@ -166,7 +175,10 @@ async def llm_rerank(
         return results
 
     n = len(results)
-    logger.info(f"[Rerank] LLM reranking {n} candidates for query: {query!r}")
+    logger.info(
+        f"[Rerank] LLM reranking {n} candidates "
+        f"for query_ref=({_text_log_ref(query)})"
+    )
 
     # Build numbered candidate list
     lines: list[str] = []
@@ -182,7 +194,7 @@ async def llm_rerank(
             llm_uuid, [Message(role="user", content=prompt)]
         )
         raw = _extract_text(resp)
-        logger.info(f"[Rerank] LLM response: {raw!r}")
+        logger.info(f"[Rerank] LLM response ref: {_text_log_ref(raw)}")
     except Exception as e:
         logger.warning(f"[Rerank] LLM call failed, falling back to original order: {e}")
         return results[:top_k]

@@ -93,8 +93,11 @@ class TelemetryTests(unittest.TestCase):
         )
         self.assertIn("p99", snapshot["latency"]["retrieval"])
         prometheus = store.prometheus()
-        self.assertIn("langrag_retrieval_zero_result_rate 1.0", prometheus)
+        self.assertIn('langrag_retrieval_zero_result_rate{instance="', prometheus)
+        self.assertIn("} 1.0", prometheus)
+        self.assertIn("langrag_operation_events_total", prometheus)
         self.assertIn("langrag_window_error_rate", prometheus)
+        self.assertIn("langrag_persistence_enabled", prometheus)
 
     def test_persistence_round_trip_uses_jsonl_without_query_text(self):
         with tempfile.TemporaryDirectory() as tmp:
@@ -168,6 +171,19 @@ class ObservabilityPageTests(unittest.IsolatedAsyncioTestCase):
             data = json.loads(path.read_text(encoding="utf-8"))
             self.assertIn("title", data)
             self.assertIn("sections.window", data)
+
+    def test_sensitive_query_log_patterns_are_not_present(self):
+        root = Path(__file__).resolve().parents[1]
+        for relative in (
+            "components/knowledge_engine/langrag.py",
+            "components/knowledge_engine/query_rewrite.py",
+            "components/knowledge_engine/rerank.py",
+        ):
+            source = (root / relative).read_text(encoding="utf-8")
+            self.assertNotIn("query={query!r}", source)
+            self.assertNotIn("query: {query!r}", source)
+            self.assertNotIn("LLM response: {raw!r}", source)
+            self.assertNotIn("Hypothetical document:\\n{hypothetical_doc}", source)
 
 
 if __name__ == "__main__":

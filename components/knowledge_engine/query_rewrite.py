@@ -7,7 +7,7 @@ Each strategy rewrites/expands the user query before embedding and searching.
 import logging
 
 from langbot_plugin.api.entities.builtin.provider.message import Message
-from components.observability.telemetry import add_stage_duration, telemetry
+from components.observability.telemetry import add_stage_duration, hash_text, telemetry
 
 logger = logging.getLogger(__name__)
 
@@ -62,6 +62,11 @@ def _vector_result_sort_key(result: dict) -> tuple[int, float]:
 def _uses_vector(search_type) -> bool:
     """Return whether this search mode needs an embedding vector."""
     return getattr(search_type, "value", search_type) != "full_text"
+
+
+def _text_log_ref(text: str | None) -> str:
+    """Return a privacy-preserving text reference for logs."""
+    return f"hash={hash_text(text)}, length={len(text or '')}"
 
 
 async def _timed_call(stage_durations: dict[str, float] | None, stage: str, call):
@@ -166,7 +171,10 @@ async def _retrieve_hyde(
     stage_durations: dict[str, float] | None = None,
 ) -> list[dict]:
     """HyDE: generate a hypothetical document, embed it, and search with that vector."""
-    logger.info(f"[HyDE] Generating hypothetical document for query: {query!r}")
+    logger.info(
+        f"[HyDE] Generating hypothetical document "
+        f"for query_ref=({_text_log_ref(query)})"
+    )
     prompt = HYDE_PROMPT.format(query=query)
     resp = await _timed_call(
         stage_durations,
@@ -174,7 +182,7 @@ async def _retrieve_hyde(
         lambda: plugin.invoke_llm(rewrite_llm, [Message(role="user", content=prompt)]),
     )
     hypothetical_doc = _extract_text(resp) or query
-    logger.info(f"[HyDE] Hypothetical document:\n{hypothetical_doc}")
+    logger.info(f"[HyDE] Hypothetical document ref: {_text_log_ref(hypothetical_doc)}")
 
     query_vector: list[float] = []
     if _uses_vector(search_type):
@@ -218,7 +226,8 @@ async def _retrieve_multi_query(
 ) -> list[dict]:
     """Multi-Query: generate N query variants, search with each, merge and deduplicate."""
     logger.info(
-        f"[Multi-Query] Generating {MULTI_QUERY_COUNT} sub-queries for: {query!r}"
+        f"[Multi-Query] Generating {MULTI_QUERY_COUNT} sub-queries "
+        f"for query_ref=({_text_log_ref(query)})"
     )
     prompt = MULTI_QUERY_PROMPT.format(query=query, n=MULTI_QUERY_COUNT)
     resp = await _timed_call(
@@ -229,9 +238,10 @@ async def _retrieve_multi_query(
     raw_text = _extract_text(resp)
     sub_queries = [line.strip() for line in raw_text.splitlines() if line.strip()]
     sub_queries = sub_queries[:MULTI_QUERY_COUNT]
-    logger.info("[Multi-Query] Generated sub-queries:")
-    for i, sq in enumerate(sub_queries):
-        logger.info(f"  [{i + 1}] {sq}")
+    logger.info(
+        "[Multi-Query] Generated sub-query refs: "
+        + ", ".join(_text_log_ref(sq) for sq in sub_queries)
+    )
 
     # Search original query + sub-queries
     all_queries = [query] + sub_queries
@@ -298,7 +308,10 @@ async def _retrieve_step_back(
     stage_durations: dict[str, float] | None = None,
 ) -> list[dict]:
     """Step-Back: generate a broader question, search with both original and abstract queries."""
-    logger.info(f"[Step-Back] Generating abstract question for: {query!r}")
+    logger.info(
+        f"[Step-Back] Generating abstract question "
+        f"for query_ref=({_text_log_ref(query)})"
+    )
     prompt = STEP_BACK_PROMPT.format(query=query)
     resp = await _timed_call(
         stage_durations,
@@ -306,7 +319,7 @@ async def _retrieve_step_back(
         lambda: plugin.invoke_llm(rewrite_llm, [Message(role="user", content=prompt)]),
     )
     abstract_query = _extract_text(resp) or query
-    logger.info(f"[Step-Back] Abstract query: {abstract_query!r}")
+    logger.info(f"[Step-Back] Abstract query ref: {_text_log_ref(abstract_query)}")
 
     # Search with both original and abstract queries
     both_queries = [query, abstract_query]

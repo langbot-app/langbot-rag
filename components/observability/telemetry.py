@@ -525,20 +525,37 @@ class LangRAGTelemetry:
 
     def prometheus(self) -> str:
         snapshot = self.snapshot()
+        instance = self.instance_id
         lines = [
             "# HELP langrag_info LangRAG observability instance information",
             "# TYPE langrag_info gauge",
-            f'langrag_info{{instance="{self.instance_id}"}} 1',
+            f'langrag_info{{instance="{instance}"}} 1',
             "# HELP langrag_uptime_seconds Seconds since telemetry store start",
             "# TYPE langrag_uptime_seconds gauge",
-            f"langrag_uptime_seconds {snapshot['uptime_seconds']}",
-            "# HELP langrag_operations_total Operation count by operation and status",
-            "# TYPE langrag_operations_total counter",
+            f'langrag_uptime_seconds{{instance="{instance}"}} {snapshot["uptime_seconds"]}',
+            "# HELP langrag_operation_events_total Operation count by operation",
+            "# TYPE langrag_operation_events_total counter",
         ]
 
         for key, value in sorted(snapshot["counters"].items()):
             parts = key.split(".")
+            if len(parts) == 2 and parts[1] == "total":
+                lines.append(
+                    f'langrag_operation_events_total{{instance="{instance}",'
+                    f'operation="{parts[0]}"}} {int(value)}'
+                )
+
+        lines.extend(
+            [
+            "# HELP langrag_operations_total Operation count by operation and status",
+            "# TYPE langrag_operations_total counter",
+            ]
+        )
+
+        for key, value in sorted(snapshot["counters"].items()):
+            parts = key.split(".")
             if len(parts) == 2 and parts[1] not in (
+                "total",
                 "duration_ms_total",
                 "chunks_created",
                 "results_returned",
@@ -547,7 +564,8 @@ class LangRAGTelemetry:
                 "zero_results",
             ):
                 lines.append(
-                    f'langrag_operations_total{{operation="{parts[0]}",'
+                    f'langrag_operations_total{{instance="{instance}",'
+                    f'operation="{parts[0]}",'
                     f'status="{parts[1]}"}} {int(value)}'
                 )
 
@@ -555,14 +573,24 @@ class LangRAGTelemetry:
             [
                 "# HELP langrag_operation_duration_ms Operation latency summary",
                 "# TYPE langrag_operation_duration_ms gauge",
+                "# HELP langrag_stage_duration_ms Operation stage latency summary",
+                "# TYPE langrag_stage_duration_ms gauge",
             ]
         )
         for operation, stats in snapshot["latency"].items():
             for metric in ("avg", "p50", "p95", "p99", "max"):
                 lines.append(
-                    f'langrag_operation_duration_ms{{operation="{operation}",'
+                    f'langrag_operation_duration_ms{{instance="{instance}",'
+                    f'operation="{operation}",'
                     f'quantile="{metric}"}} {stats.get(metric, 0)}'
                 )
+            for stage, stage_stats in (stats.get("stages_ms") or {}).items():
+                for metric in ("avg", "p50", "p95", "p99", "max"):
+                    lines.append(
+                        f'langrag_stage_duration_ms{{instance="{instance}",'
+                        f'operation="{operation}",stage="{stage}",'
+                        f'quantile="{metric}"}} {stage_stats.get(metric, 0)}'
+                    )
 
         lines.extend(
             [
@@ -575,11 +603,13 @@ class LangRAGTelemetry:
         for window, operations in snapshot["windows"].items():
             for operation, stats in operations.items():
                 lines.append(
-                    f'langrag_window_error_rate{{window="{window}",'
+                    f'langrag_window_error_rate{{instance="{instance}",'
+                    f'window="{window}",'
                     f'operation="{operation}"}} {stats.get("error_rate", 0)}'
                 )
                 lines.append(
-                    f'langrag_window_rate_per_min{{window="{window}",'
+                    f'langrag_window_rate_per_min{{instance="{instance}",'
+                    f'window="{window}",'
                     f'operation="{operation}"}} {stats.get("rate_per_min", 0)}'
                 )
 
@@ -588,17 +618,50 @@ class LangRAGTelemetry:
             [
                 "# HELP langrag_retrieval_zero_result_rate Retrieval zero-result rate",
                 "# TYPE langrag_retrieval_zero_result_rate gauge",
-                f"langrag_retrieval_zero_result_rate {quality['zero_result_rate']}",
+                (
+                    f'langrag_retrieval_zero_result_rate{{instance="{instance}"}} '
+                    f"{quality['zero_result_rate']}"
+                ),
                 "# HELP langrag_retrieval_topk_fill_rate Average returned/top_k fill rate",
                 "# TYPE langrag_retrieval_topk_fill_rate gauge",
-                f"langrag_retrieval_topk_fill_rate {quality['top_k_fill_rate']}",
+                (
+                    f'langrag_retrieval_topk_fill_rate{{instance="{instance}"}} '
+                    f"{quality['top_k_fill_rate']}"
+                ),
+                "# HELP langrag_retrieval_reference_coverage_rate Retrieval reference coverage rate",
+                "# TYPE langrag_retrieval_reference_coverage_rate gauge",
+                (
+                    f'langrag_retrieval_reference_coverage_rate{{instance="{instance}"}} '
+                    f"{quality['reference_coverage_rate']}"
+                ),
+                "# HELP langrag_retrieval_rerank_rate Retrieval rerank usage rate",
+                "# TYPE langrag_retrieval_rerank_rate gauge",
+                (
+                    f'langrag_retrieval_rerank_rate{{instance="{instance}"}} '
+                    f"{quality['rerank_rate']}"
+                ),
+                "# HELP langrag_persistence_enabled Whether JSONL persistence is enabled",
+                "# TYPE langrag_persistence_enabled gauge",
+                (
+                    f'langrag_persistence_enabled{{instance="{instance}"}} '
+                    f"{1 if snapshot['persistence']['enabled'] else 0}"
+                ),
+                "# HELP langrag_history_events Number of in-memory history events",
+                "# TYPE langrag_history_events gauge",
+                (
+                    f'langrag_history_events{{instance="{instance}"}} '
+                    f"{snapshot['persistence']['history_events']}"
+                ),
                 "# HELP langrag_alerts_active Active alert count by severity",
                 "# TYPE langrag_alerts_active gauge",
             ]
         )
         for severity in ("warning", "critical"):
             count = sum(1 for alert in snapshot["alerts"] if alert["severity"] == severity)
-            lines.append(f'langrag_alerts_active{{severity="{severity}"}} {count}')
+            lines.append(
+                f'langrag_alerts_active{{instance="{instance}",'
+                f'severity="{severity}"}} {count}'
+            )
         return "\n".join(lines) + "\n"
 
     def _load_persisted_events(self) -> None:

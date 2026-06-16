@@ -28,6 +28,11 @@ logger = logging.getLogger(__name__)
 EMBEDDING_BATCH_SIZE = 32
 
 
+def _query_log_ref(query: str | None) -> str:
+    """Return a privacy-preserving query reference for logs."""
+    return f"hash={hash_text(query)}, length={len(query or '')}"
+
+
 class LangRAG(KnowledgeEngine):
     """Simple Knowledge Engine implementation using Plugin IPC.
 
@@ -507,7 +512,7 @@ class LangRAG(KnowledgeEngine):
             logger.info(
                 f"Retrieve: strategy={index_type}, top_k={top_k}, "
                 f"query_rewrite={context.retrieval_settings.get('query_rewrite', 'off')}, "
-                f"query={query!r}"
+                f"query_ref=({_query_log_ref(query)})"
             )
             logger.info(
                 f"Retrieve search config: search_type={search_type}, "
