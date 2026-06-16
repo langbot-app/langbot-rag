@@ -99,6 +99,31 @@ GeneralParsers is currently the recommended parser for LangRAG because it can pr
 
 LangRAG consumes those parser outputs directly during ingestion, which generally produces better chunks and better retrieval quality than the fallback parser.
 
+## Observability Page
+
+LangRAG includes a WebUI Page named **Observability**. It shows recent ingest,
+retrieval, delete, and embedding events, plus production-oriented diagnostics:
+
+- 1m / 5m / 1h operation windows, rates, error rates, and zero-result rates
+- latency averages plus p50 / p95 / p99 / max values
+- ingest and retrieval stage timings, including parser, chunking, embedding,
+  vector search, rerank, context expansion, and vector upsert stages
+- retrieval quality signals such as zero-result rate, Top-K fill rate, reference
+  coverage, rerank usage, and filtered-query rate
+- active alerts for high error rate, retrieval zero results, high p95 latency,
+  and persistence problems
+- privacy-conscious event data: query text is not stored; query, document, and
+  collection identifiers are represented with hashes where possible
+
+Telemetry is appended to `data/observability/langrag-events.jsonl` by default so
+recent diagnostics survive plugin restarts. Override the directory with
+`LANGRAG_OBSERVABILITY_DIR`, or set `LANGRAG_INSTANCE_ID` to label a specific
+runtime instance.
+
+The Page backend also exposes `/snapshot`, `/export`, `/clear`, and `/metrics`
+through the LangBot Page API. `/metrics` returns Prometheus text format so the
+data can be bridged into an external monitoring stack.
+
 ## Development
 
 ```bash

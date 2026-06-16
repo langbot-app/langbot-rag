@@ -33,6 +33,10 @@ spec:
     KnowledgeEngine:
       fromFiles:
       - components/knowledge_engine/langrag.yaml
+    Page:
+      fromDirs:
+      - path: components/pages/
+        maxDepth: 1
 execution:
   python:
     path: main.py

@@ -168,6 +168,35 @@ class Parser:
     pass
 
 
+class PageRequest(SimpleModel):
+    def __init__(self, endpoint, method, body=None, caller=None, headers=None):
+        super().__init__(
+            endpoint=endpoint,
+            method=method,
+            body=body,
+            caller=caller,
+            headers=headers or {},
+        )
+
+
+class PageResponse(SimpleModel):
+    def __init__(self, data=None, error=None):
+        super().__init__(data=data, error=error)
+
+    @classmethod
+    def ok(cls, data=None):
+        return cls(data=data)
+
+    @classmethod
+    def fail(cls, error):
+        return cls(error=error)
+
+
+class Page:
+    async def handle_api(self, request):
+        return PageResponse.fail("Not implemented")
+
+
 class Message(SimpleModel):
     pass
 
@@ -205,6 +234,7 @@ def install_stubs() -> None:
         "langbot_plugin.api.definition",
         "langbot_plugin.api.definition.components",
         "langbot_plugin.api.definition.components.parser",
+        "langbot_plugin.api.definition.components.page",
         "langbot_plugin.api.entities",
         "langbot_plugin.api.entities.builtin",
         "langbot_plugin.api.entities.builtin.provider",
@@ -220,6 +250,12 @@ def install_stubs() -> None:
     _set_module(
         "langbot_plugin.api.definition.components.parser.parser",
         Parser=Parser,
+    )
+    _set_module(
+        "langbot_plugin.api.definition.components.page",
+        Page=Page,
+        PageRequest=PageRequest,
+        PageResponse=PageResponse,
     )
     _set_module(
         "langbot_plugin.api.entities.builtin.rag",
