@@ -5,6 +5,7 @@ from benchmarks.sdk_stubs import install_stubs
 install_stubs()
 
 from components.knowledge_engine.langrag import LangRAG
+from components.observability import telemetry
 from langbot_plugin.api.entities.builtin.rag import (
     DocumentStatus,
     FileMetadata,
@@ -166,6 +167,7 @@ class LangRAGTests(unittest.IsolatedAsyncioTestCase):
         )
 
     async def test_retrieve_uses_host_rerank_model_with_overfetched_candidates(self):
+        telemetry.clear()
         engine = LangRAG()
         plugin = RecordingRetrievePlugin()
         engine.plugin = plugin
@@ -191,6 +193,16 @@ class LangRAGTests(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(plugin.rerank_top_k, 2)
         self.assertEqual([entry.id for entry in response.results], ["chunk-2", "chunk-0"])
         self.assertEqual(response.results[0].score, 0.95)
+        self.assertTrue(response.metadata["trace_id"].startswith("retrieval-"))
+        self.assertTrue(response.metadata["trace_spans"])
+        self.assertTrue(
+            all(span["trace_id"] == response.metadata["trace_id"] for span in response.metadata["trace_spans"])
+        )
+        self.assertIn("vector_search", {span["name"] for span in response.metadata["trace_spans"]})
+
+        recent = telemetry.snapshot()["recent"]["retrieval"][0]
+        self.assertEqual(recent["trace_id"], response.metadata["trace_id"])
+        self.assertEqual(recent["trace_spans"], response.metadata["trace_spans"])
 
 
 if __name__ == "__main__":

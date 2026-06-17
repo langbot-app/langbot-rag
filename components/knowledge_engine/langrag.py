@@ -33,6 +33,21 @@ def _query_log_ref(query: str | None) -> str:
     return f"hash={hash_text(query)}, length={len(query or '')}"
 
 
+def _trace_spans(trace_id: str, stage_durations: dict[str, float]) -> list[dict]:
+    """Build LangRAG-local spans from recorded stage timings."""
+    return [
+        {
+            "trace_id": trace_id,
+            "span_id": f"{trace_id}:{stage}",
+            "name": stage,
+            "kind": "langrag.stage",
+            "status": "completed",
+            "duration_ms": duration,
+        }
+        for stage, duration in stage_durations.items()
+    ]
+
+
 class LangRAG(KnowledgeEngine):
     """Simple Knowledge Engine implementation using Plugin IPC.
 
@@ -780,6 +795,7 @@ class LangRAG(KnowledgeEngine):
                 telemetry.elapsed_ms(stage_started),
             )
             telemetry_status = "completed"
+            trace_spans = _trace_spans(trace_id, stage_durations)
             return RetrievalResponse(
                 results=entries,
                 total_found=len(entries),
@@ -787,6 +803,7 @@ class LangRAG(KnowledgeEngine):
                     "trace_id": trace_id,
                     "raw_count": raw_count,
                     "stage_durations_ms": stage_durations,
+                    "trace_spans": trace_spans,
                 },
             )
         except Exception as e:
@@ -815,6 +832,7 @@ class LangRAG(KnowledgeEngine):
                 creation_settings=context.creation_settings,
                 retrieval_settings=context.retrieval_settings,
                 stage_durations_ms=stage_durations,
+                trace_spans=_trace_spans(trace_id, stage_durations),
                 reranked=reranked,
                 knowledge_base_id=context.knowledge_base_id,
                 trace_id=trace_id,
