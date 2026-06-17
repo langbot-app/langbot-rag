@@ -201,6 +201,60 @@
       margin-bottom: 16px;
     }
 
+    .tabs {
+      display: flex;
+      gap: 8px;
+      overflow-x: auto;
+      border: 1px solid var(--border);
+      border-radius: 8px;
+      background: var(--surface);
+      margin: 0 0 14px;
+      padding: 6px;
+      box-shadow: var(--shadow);
+    }
+
+    .tab {
+      height: 34px;
+      border: 1px solid transparent;
+      border-radius: 6px;
+      background: transparent;
+      color: var(--muted);
+      padding: 0 10px;
+      cursor: pointer;
+      white-space: nowrap;
+      font-weight: 700;
+      display: inline-flex;
+      align-items: center;
+      gap: 7px;
+    }
+
+    .tab:hover { color: var(--text); background: var(--surface-2); }
+    .tab.active {
+      color: var(--accent-strong);
+      border-color: var(--accent);
+      background: color-mix(in srgb, var(--accent) 10%, var(--surface));
+    }
+
+    .tab-count {
+      min-width: 18px;
+      height: 18px;
+      border-radius: 999px;
+      padding: 0 6px;
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      background: color-mix(in srgb, var(--muted) 13%, transparent);
+      color: var(--muted);
+      font-size: 11px;
+      font-variant-numeric: tabular-nums;
+      font-weight: 720;
+    }
+
+    .tab.active .tab-count {
+      background: color-mix(in srgb, var(--accent) 16%, transparent);
+      color: var(--accent-strong);
+    }
+
     .metric {
       padding: 11px 12px;
       min-height: 84px;
@@ -234,6 +288,15 @@
       gap: 16px;
     }
 
+    .tab-panel { display: none; }
+    .tab-panel.active {
+      display: grid;
+      grid-template-columns: minmax(0, 1fr);
+      gap: 16px;
+    }
+
+    .tab-panel[hidden] { display: none; }
+
     .split {
       display: grid;
       grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
@@ -253,6 +316,59 @@
       justify-content: space-between;
       gap: 12px;
       margin-bottom: 9px;
+    }
+
+    .panel-tools {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 10px;
+      margin: 0 0 10px;
+      flex-wrap: wrap;
+    }
+
+    .panel-actions {
+      display: flex;
+      align-items: center;
+      justify-content: flex-end;
+      gap: 8px;
+      flex-wrap: wrap;
+    }
+
+    .search {
+      width: min(420px, 100%);
+      height: 32px;
+      border: 1px solid var(--border);
+      border-radius: 6px;
+      background: var(--surface);
+      color: var(--text);
+      padding: 0 10px;
+    }
+
+    .pager {
+      display: flex;
+      align-items: center;
+      justify-content: flex-end;
+      gap: 8px;
+      margin-top: 10px;
+      color: var(--muted);
+      font-variant-numeric: tabular-nums;
+    }
+
+    .pager.compact { margin-top: 0; }
+
+    .pager .btn {
+      height: 28px;
+      box-shadow: none;
+      padding: 0 9px;
+    }
+
+    .pager .btn:disabled { cursor: default; }
+
+    .pager-meta {
+      padding: 0 3px;
+      min-width: 160px;
+      text-align: center;
     }
 
     .panel h2 {
@@ -354,6 +470,29 @@
       color: var(--blue);
     }
 
+    details.trace {
+      min-width: 240px;
+    }
+
+    details.trace summary {
+      cursor: pointer;
+      color: var(--accent-strong);
+      font-weight: 700;
+    }
+
+    .span-list {
+      display: grid;
+      gap: 4px;
+      margin-top: 6px;
+    }
+
+    .span-row {
+      display: grid;
+      grid-template-columns: minmax(120px, 1fr) 76px;
+      gap: 8px;
+      color: var(--muted);
+    }
+
     .empty {
       padding: 18px 12px;
       color: var(--muted);
@@ -401,10 +540,7 @@
       font-variant-numeric: tabular-nums;
     }
 
-    .export-box {
-      display: none;
-      margin-top: 10px;
-    }
+    .export-box { margin-top: 0; }
 
     .export-box textarea {
       width: 100%;
@@ -428,6 +564,9 @@
       .toolbar { justify-content: flex-start; }
       .summary { grid-template-columns: 1fr; }
       .bar-row { grid-template-columns: 92px minmax(0, 1fr) 74px; }
+      .panel-tools { align-items: stretch; }
+      .panel-actions { justify-content: flex-start; }
+      .pager { justify-content: flex-start; }
     }
   </style>
 </head>
@@ -478,60 +617,75 @@
 
     <section id="summary" class="summary" aria-label="Summary"></section>
 
+    <nav class="tabs" role="tablist" aria-label="Observability sections">
+      <button id="tab-overview" class="tab active" type="button" role="tab" aria-selected="true" aria-controls="panel-overview" data-tab="overview">
+        <span data-i18n="tabs.overview">Overview</span>
+      </button>
+      <button id="tab-retrieval" class="tab" type="button" role="tab" aria-selected="false" aria-controls="panel-retrieval" data-tab="retrieval">
+        <span data-i18n="tabs.retrieval">Retrieval</span>
+        <span id="tab-count-retrieval" class="tab-count">0</span>
+      </button>
+      <button id="tab-ingest" class="tab" type="button" role="tab" aria-selected="false" aria-controls="panel-ingest" data-tab="ingest">
+        <span data-i18n="tabs.ingest">Ingest</span>
+        <span id="tab-count-ingest" class="tab-count">0</span>
+      </button>
+      <button id="tab-errors" class="tab" type="button" role="tab" aria-selected="false" aria-controls="panel-errors" data-tab="errors">
+        <span data-i18n="tabs.errors">Errors</span>
+        <span id="tab-count-errors" class="tab-count">0</span>
+      </button>
+      <button id="tab-export" class="tab" type="button" role="tab" aria-selected="false" aria-controls="panel-export" data-tab="export">
+        <span data-i18n="tabs.export">Export</span>
+      </button>
+    </nav>
+
     <section class="grid">
-      <div class="split">
-        <article class="panel">
-          <div class="panel-head">
-            <h2 data-i18n="sections.window">Window Metrics</h2>
-            <span id="window-label" class="panel-count">5m</span>
-          </div>
-          <div id="window-table"></div>
-        </article>
+      <section id="panel-overview" class="tab-panel active" role="tabpanel" aria-labelledby="tab-overview" data-panel="overview">
+        <div class="split">
+          <article class="panel">
+            <div class="panel-head">
+              <h2 data-i18n="sections.window">Window Metrics</h2>
+              <span id="window-label" class="panel-count">5m</span>
+            </div>
+            <div id="window-table"></div>
+          </article>
 
-        <article class="panel">
-          <div class="panel-head">
-            <h2 data-i18n="sections.quality">Retrieval Quality</h2>
-            <span id="quality-count" class="panel-count">0</span>
-          </div>
-          <div id="quality-bars" class="bars"></div>
-        </article>
-      </div>
-
-      <div class="split">
-        <article class="panel">
-          <div class="panel-head">
-            <h2 data-i18n="sections.latency">Latency Percentiles</h2>
-            <span class="panel-count">p50 / p95 / p99</span>
-          </div>
-          <div id="latency-table"></div>
-        </article>
-
-        <article class="panel">
-          <div class="panel-head">
-            <h2 data-i18n="sections.stages">Stage Breakdown</h2>
-            <span id="stage-count" class="panel-count">0</span>
-          </div>
-          <div id="stage-bars" class="bars"></div>
-        </article>
-      </div>
-
-      <article class="panel">
-        <div class="panel-head">
-          <h2 data-i18n="sections.recentIngest">Recent Ingest</h2>
-          <span id="ingest-count" class="panel-count">0 events</span>
+          <article class="panel">
+            <div class="panel-head">
+              <h2 data-i18n="sections.quality">Retrieval Quality</h2>
+              <span id="quality-count" class="panel-count">0</span>
+            </div>
+            <div id="quality-bars" class="bars"></div>
+          </article>
         </div>
-        <div id="ingest-table"></div>
-      </article>
 
-      <article class="panel">
-        <div class="panel-head">
-          <h2 data-i18n="sections.recentRetrieval">Recent Retrieval</h2>
-          <span id="retrieval-count" class="panel-count">0 events</span>
+        <div class="split">
+          <article class="panel">
+            <div class="panel-head">
+              <h2 data-i18n="sections.latency">Latency Percentiles</h2>
+              <span class="panel-count">p50 / p95 / p99</span>
+            </div>
+            <div id="latency-table"></div>
+          </article>
+
+          <article class="panel">
+            <div class="panel-head">
+              <h2 data-i18n="sections.stages">Stage Breakdown</h2>
+              <span id="stage-count" class="panel-count">0</span>
+            </div>
+            <div id="stage-bars" class="bars"></div>
+          </article>
         </div>
-        <div id="retrieval-table"></div>
-      </article>
+      </section>
 
-      <div class="split">
+      <section id="panel-ingest" class="tab-panel" role="tabpanel" aria-labelledby="tab-ingest" data-panel="ingest" hidden>
+        <article class="panel">
+          <div class="panel-head">
+            <h2 data-i18n="sections.recentIngest">Recent Ingest</h2>
+            <span id="ingest-count" class="panel-count">0 events</span>
+          </div>
+          <div id="ingest-table"></div>
+        </article>
+
         <article class="panel">
           <div class="panel-head">
             <h2 data-i18n="sections.recentDeletes">Recent Deletes</h2>
@@ -539,7 +693,31 @@
           </div>
           <div id="delete-table"></div>
         </article>
+      </section>
 
+      <section id="panel-retrieval" class="tab-panel" role="tabpanel" aria-labelledby="tab-retrieval" data-panel="retrieval" hidden>
+        <article class="panel">
+          <div class="panel-head">
+            <h2 data-i18n="sections.recentRetrieval">Recent Retrieval</h2>
+            <span id="retrieval-count" class="panel-count">0 events</span>
+          </div>
+          <div class="panel-tools">
+            <input id="retrieval-filter" class="search" type="search" data-i18n-placeholder="filters.retrieval" placeholder="Filter by trace, hash, search type">
+            <div class="panel-actions">
+              <select id="page-size" class="select" aria-label="Rows per page">
+                <option value="10">10 / page</option>
+                <option value="25" selected>25 / page</option>
+                <option value="50">50 / page</option>
+              </select>
+              <div id="retrieval-pager-top" class="pager compact"></div>
+            </div>
+          </div>
+          <div id="retrieval-table"></div>
+          <div id="retrieval-pager-bottom" class="pager"></div>
+        </article>
+      </section>
+
+      <section id="panel-errors" class="tab-panel" role="tabpanel" aria-labelledby="tab-errors" data-panel="errors" hidden>
         <article class="panel">
           <div class="panel-head">
             <h2 data-i18n="sections.recentErrors">Recent Errors</h2>
@@ -547,19 +725,21 @@
           </div>
           <div id="error-table"></div>
         </article>
-      </div>
+      </section>
 
-      <article class="panel export-box" id="export-box">
-        <div class="panel-head">
-          <h2 id="export-title">Export</h2>
-          <span id="export-size" class="panel-count"></span>
-        </div>
-        <textarea id="export-body" class="mono" readonly></textarea>
-      </article>
+      <section id="panel-export" class="tab-panel" role="tabpanel" aria-labelledby="tab-export" data-panel="export" hidden>
+        <article class="panel export-box" id="export-box">
+          <div class="panel-head">
+            <h2 id="export-title" data-i18n="export.json">JSON Snapshot</h2>
+            <span id="export-size" class="panel-count"></span>
+          </div>
+          <textarea id="export-body" class="mono" readonly></textarea>
+        </article>
+      </section>
     </section>
   </main>
 
-  <script src="/api/v1/plugins/_sdk/page-sdk.js"></script>
+  <script src="/api/v1/plugins/_sdk/page-sdk.js" crossorigin="anonymous"></script>
   <script>
     (function () {
       "use strict";
@@ -568,6 +748,10 @@
         loading: false,
         snapshot: null,
         windowKey: "5m",
+        tab: "overview",
+        retrievalPage: 1,
+        pageSize: 25,
+        retrievalFilter: "",
         exportMode: null,
         status: null
       };
@@ -607,7 +791,14 @@
         exportBox: document.getElementById("export-box"),
         exportTitle: document.getElementById("export-title"),
         exportSize: document.getElementById("export-size"),
-        exportBody: document.getElementById("export-body")
+        exportBody: document.getElementById("export-body"),
+        retrievalFilter: document.getElementById("retrieval-filter"),
+        retrievalPagerTop: document.getElementById("retrieval-pager-top"),
+        retrievalPagerBottom: document.getElementById("retrieval-pager-bottom"),
+        pageSize: document.getElementById("page-size"),
+        tabRetrievalCount: document.getElementById("tab-count-retrieval"),
+        tabIngestCount: document.getElementById("tab-count-ingest"),
+        tabErrorCount: document.getElementById("tab-count-errors")
       };
 
       function t(key, fallback) {
@@ -700,6 +891,26 @@
         return count + " " + (count === 1 ? t("labels.event", "event") : t("labels.events", "events"));
       }
 
+      function setActiveTab(tab) {
+        state.tab = tab;
+        document.querySelectorAll(".tab").forEach(function (el) {
+          var active = el.getAttribute("data-tab") === tab;
+          el.classList.toggle("active", active);
+          el.setAttribute("aria-selected", active ? "true" : "false");
+        });
+        document.querySelectorAll(".tab-panel").forEach(function (el) {
+          var active = el.getAttribute("data-panel") === tab;
+          el.classList.toggle("active", active);
+          el.hidden = !active;
+        });
+        if (tab === "export" && !state.exportMode) {
+          state.exportMode = "json";
+          els.exportTitle.textContent = t("export.json", "JSON Snapshot");
+          els.exportBody.value = state.snapshot ? JSON.stringify(state.snapshot, null, 2) : "";
+          renderExportHeader();
+        }
+      }
+
       function metric(label, value, sub) {
         return [
           "<div class=\"metric\">",
@@ -728,6 +939,29 @@
         target.innerHTML = "<div class=\"table-wrap\"><table><thead><tr>" + head + "</tr></thead><tbody>" + body + "</tbody></table></div>";
       }
 
+      function renderPagedTable(target, pagers, columns, rows, page, pageSize, onPage) {
+        var total = (rows || []).length;
+        var pages = Math.max(1, Math.ceil(total / pageSize));
+        page = Math.min(Math.max(1, page), pages);
+        renderTable(target, columns, (rows || []).slice((page - 1) * pageSize, page * pageSize));
+        if (!total) {
+          pagers.forEach(function (pager) { pager.innerHTML = ""; });
+          return page;
+        }
+        var pagerHtml = [
+          "<button class=\"btn\" type=\"button\" data-page=\"", page - 1, "\" aria-label=\"", escapeHtml(t("pagination.previous", "Previous page")), "\"", page <= 1 ? " disabled" : "", ">‹</button>",
+          "<span class=\"pager-meta\">", escapeHtml(((page - 1) * pageSize + 1) + "-" + Math.min(total, page * pageSize) + " / " + total + " · " + t("pagination.page", "Page") + " " + page + "/" + pages), "</span>",
+          "<button class=\"btn\" type=\"button\" data-page=\"", page + 1, "\" aria-label=\"", escapeHtml(t("pagination.next", "Next page")), "\"", page >= pages ? " disabled" : "", ">›</button>"
+        ].join("");
+        pagers.forEach(function (pager) {
+          pager.innerHTML = pagerHtml;
+          pager.querySelectorAll("button[data-page]").forEach(function (button) {
+            button.addEventListener("click", function () { onPage(Number(button.getAttribute("data-page"))); });
+          });
+        });
+        return page;
+      }
+
       function renderBars(target, rows) {
         if (!rows || rows.length === 0) {
           target.innerHTML = "<div class=\"empty\">" + escapeHtml(t("empty.noData", "No data")) + "</div>";
@@ -748,6 +982,22 @@
 
       function operationLabel(operation) {
         return t("operation." + operation, operation);
+      }
+
+      function traceDetails(row) {
+        var spans = row.trace_spans || [];
+        if (!spans.length) return escapeHtml(row.trace_id);
+        return [
+          "<details class=\"trace\"><summary class=\"mono\">", escapeHtml(row.trace_id), "</summary>",
+          "<div class=\"span-list\">",
+          spans.map(function (span) {
+            return [
+              "<div class=\"span-row\"><span>", escapeHtml(t("stage." + span.name, span.name)), "</span>",
+              "<span>", escapeHtml(ms(span.duration_ms)), "</span></div>"
+            ].join("");
+          }).join(""),
+          "</div></details>"
+        ].join("");
       }
 
       function renderHealth(snapshot) {
@@ -872,16 +1122,35 @@
         var retrieval = recent.retrieval || [];
         var deletes = recent.delete || [];
         var errors = recent.errors || [];
+        var filter = state.retrievalFilter.trim().toLowerCase();
+        var filteredRetrieval = retrieval.filter(function (row) {
+          if (!filter) return true;
+          return [
+            row.trace_id,
+            row.collection_id,
+            row.collection_id_hash,
+            row.knowledge_base_id_hash,
+            row.query_hash,
+            row.search_type,
+            row.status,
+            row.error,
+            JSON.stringify(row.retrieval_settings || {})
+          ].join(" ").toLowerCase().indexOf(filter) !== -1;
+        });
 
         els.ingestCount.textContent = eventCountLabel(ingest);
-        els.retrievalCount.textContent = eventCountLabel(retrieval);
+        els.retrievalCount.textContent = eventCountLabel(filteredRetrieval) + (filter ? " / " + retrieval.length : "");
         els.deleteCount.textContent = eventCountLabel(deletes);
         els.errorCount.textContent = eventCountLabel(errors);
+        els.tabIngestCount.textContent = num(ingest.length + deletes.length);
+        els.tabRetrievalCount.textContent = num(retrieval.length);
+        els.tabErrorCount.textContent = num(errors.length);
 
         renderTable(els.ingest, [
           { label: t("table.time", "Time"), render: function (row) { return escapeHtml(shortTime(row.recorded_at)); } },
           { label: t("table.status", "Status"), render: function (row) { return statusBadge(row.status); } },
           { label: t("table.trace", "Trace"), className: "mono", render: function (row) { return escapeHtml(row.trace_id); } },
+          { label: t("table.kb", "KB"), className: "mono", render: function (row) { return escapeHtml(row.collection_id || row.knowledge_base_id_hash); } },
           { label: t("table.document", "Document"), className: "mono", render: function (row) { return escapeHtml(row.document_id || row.document_id_hash); } },
           { label: t("table.parser", "Parser"), render: function (row) { return escapeHtml(row.parser_source); } },
           { label: t("table.index", "Index"), render: function (row) { return escapeHtml(row.index_type); } },
@@ -891,10 +1160,11 @@
           { label: t("table.error", "Error"), className: "wrap", render: function (row) { return escapeHtml(row.error); } }
         ], ingest);
 
-        renderTable(els.retrieval, [
+        state.retrievalPage = renderPagedTable(els.retrieval, [els.retrievalPagerTop, els.retrievalPagerBottom], [
           { label: t("table.time", "Time"), render: function (row) { return escapeHtml(shortTime(row.recorded_at)); } },
           { label: t("table.status", "Status"), render: function (row) { return statusBadge(row.status); } },
-          { label: t("table.trace", "Trace"), className: "mono", render: function (row) { return escapeHtml(row.trace_id); } },
+          { label: t("table.kb", "KB"), className: "mono", render: function (row) { return escapeHtml(row.collection_id || row.knowledge_base_id_hash); } },
+          { label: t("table.trace", "Trace"), render: traceDetails },
           { label: t("table.queryHash", "Query Hash"), className: "mono", render: function (row) { return escapeHtml(row.query_hash); } },
           { label: t("table.search", "Search"), render: function (row) { return escapeHtml(row.search_type); } },
           { label: t("table.raw", "Raw"), render: function (row) { return escapeHtml(row.raw_count); } },
@@ -903,12 +1173,16 @@
           { label: t("table.rerank", "Rerank"), render: function (row) { return escapeHtml(row.reranked === true ? t("labels.yes", "yes") : row.reranked === false ? t("labels.no", "no") : "-"); } },
           { label: t("table.duration", "Duration"), render: function (row) { return escapeHtml(ms(row.duration_ms)); } },
           { label: t("table.error", "Error"), className: "wrap", render: function (row) { return escapeHtml(row.error); } }
-        ], retrieval);
+        ], filteredRetrieval, state.retrievalPage, state.pageSize, function (page) {
+          state.retrievalPage = page;
+          renderRecent(state.snapshot);
+        });
 
         renderTable(els.delete, [
           { label: t("table.time", "Time"), render: function (row) { return escapeHtml(shortTime(row.recorded_at)); } },
           { label: t("table.status", "Status"), render: function (row) { return statusBadge(row.status); } },
           { label: t("table.trace", "Trace"), className: "mono", render: function (row) { return escapeHtml(row.trace_id); } },
+          { label: t("table.kb", "KB"), className: "mono", render: function (row) { return escapeHtml(row.collection_id || row.knowledge_base_id_hash); } },
           { label: t("table.document", "Document"), className: "mono", render: function (row) { return escapeHtml(row.document_id || row.document_id_hash); } },
           { label: t("table.collection", "Collection"), className: "mono", render: function (row) { return escapeHtml(row.collection_id || row.collection_id_hash); } },
           { label: t("table.deleted", "Deleted"), render: function (row) { return escapeHtml(row.deleted === true ? t("labels.yes", "yes") : row.deleted === false ? t("labels.no", "no") : "-"); } },
@@ -922,6 +1196,7 @@
           { label: t("table.operation", "Operation"), render: function (row) { return escapeHtml(operationLabel(row.operation)); } },
           { label: t("table.status", "Status"), render: function (row) { return statusBadge(row.status); } },
           { label: t("table.trace", "Trace"), className: "mono", render: function (row) { return escapeHtml(row.trace_id); } },
+          { label: t("table.kb", "KB"), className: "mono", render: function (row) { return escapeHtml(row.collection_id || row.knowledge_base_id_hash); } },
           { label: t("table.document", "Document"), className: "mono", render: function (row) { return escapeHtml(row.document_id || row.document_id_hash); } },
           { label: t("table.query", "Query"), className: "mono", render: function (row) { return escapeHtml(row.query_hash); } },
           { label: t("table.duration", "Duration"), render: function (row) { return escapeHtml(ms(row.duration_ms)); } },
@@ -947,6 +1222,10 @@
         var fallback = state.exportMode === "metrics" ? "Prometheus Metrics" : "JSON Snapshot";
         els.exportTitle.textContent = t(titleKey, fallback);
         els.exportSize.textContent = num((els.exportBody.value || "").length) + " " + t("labels.bytes", "bytes");
+      }
+
+      function refreshPlaceholders() {
+        els.retrievalFilter.placeholder = t("filters.retrieval", "Filter by trace, hash, search type");
       }
 
       async function loadSnapshot() {
@@ -992,7 +1271,7 @@
         setBusy(true);
         try {
           var payload = await langbot.api("/metrics", null, "GET");
-          els.exportBox.style.display = "block";
+          setActiveTab("export");
           state.exportMode = "metrics";
           els.exportBody.value = payload.body || "";
           renderExportHeader();
@@ -1011,7 +1290,7 @@
       function showExport() {
         if (!state.snapshot) return;
         var body = JSON.stringify(state.snapshot, null, 2);
-        els.exportBox.style.display = "block";
+        setActiveTab("export");
         state.exportMode = "json";
         els.exportBody.value = body;
         renderExportHeader();
@@ -1026,13 +1305,45 @@
         state.windowKey = event.target.value;
         if (state.snapshot) renderWindow(state.snapshot);
       });
+      els.retrievalFilter.addEventListener("input", function (event) {
+        state.retrievalFilter = event.target.value;
+        state.retrievalPage = 1;
+        if (state.snapshot) renderRecent(state.snapshot);
+      });
+      els.pageSize.addEventListener("change", function (event) {
+        state.pageSize = Number(event.target.value) || 25;
+        state.retrievalPage = 1;
+        if (state.snapshot) renderRecent(state.snapshot);
+      });
+      document.querySelectorAll(".tab").forEach(function (button) {
+        button.addEventListener("click", function () {
+          setActiveTab(button.getAttribute("data-tab"));
+        });
+        button.addEventListener("keydown", function (event) {
+          var keys = ["ArrowLeft", "ArrowRight", "Home", "End"];
+          if (keys.indexOf(event.key) === -1) return;
+          event.preventDefault();
+          var tabs = Array.prototype.slice.call(document.querySelectorAll(".tab"));
+          var index = tabs.indexOf(button);
+          if (event.key === "Home") index = 0;
+          if (event.key === "End") index = tabs.length - 1;
+          if (event.key === "ArrowLeft") index = (index - 1 + tabs.length) % tabs.length;
+          if (event.key === "ArrowRight") index = (index + 1) % tabs.length;
+          tabs[index].focus();
+          setActiveTab(tabs[index].getAttribute("data-tab"));
+        });
+      });
 
       langbot.onLanguageChange(function () {
+        refreshPlaceholders();
         if (state.snapshot) renderSnapshot(state.snapshot);
         renderExportHeader();
         applyStatus();
       });
-      langbot.onReady(loadSnapshot);
+      langbot.onReady(function () {
+        refreshPlaceholders();
+        loadSnapshot();
+      });
     })();
   </script>
 </body>
