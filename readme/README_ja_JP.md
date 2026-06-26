@@ -1,24 +1,26 @@
 # LangRAG
 
-LangBot 向け RAG（検索拡張生成）エンジンプラグイン。
+LangRAG は、LangBot 向けの RAG（Retrieval-Augmented Generation）ナレッジエンジンプラグインです。LangBot Host に組み込まれている Embedding モデルとベクトルデータベースを利用して、ドキュメントの取り込み、インデックス作成、ナレッジベース検索を行います。
 
-このプラグインは、LangBot ホストの組み込みインフラストラクチャ（Embedding モデルとベクトルデータベース）を使用して、ドキュメントの取り込みとベクトル検索を行うナレッジエンジンの構築方法を示します。
+LangBot の標準的な RAG エンジンとして利用できるほか、独自の KnowledgeEngine プラグインを開発する際の参考実装としても使えます。
 
 ## 機能
 
-- **外部 Parser 連携** - GeneralParsers などの Parser プラグインが提供する事前解析結果を優先的に利用し、構造化 sections と文書 metadata を取り込みます
-- **内蔵パーサーによるフォールバック** - 外部 Parser が設定されていない場合でも、内蔵パーサーにフォールバックして動作します
-- **複数のインデックス戦略** - フラットチャンキング、親子チャンキング、LLM 生成の Q&A ペア
-- **柔軟な検索方法** - ベクトル検索、全文検索、またはハイブリッド検索
-- **クエリ書き換え** - HyDE、Multi-Query、Step-Back 戦略による再現率の向上
-- **設定可能なチャンキング** - カスタムチャンクサイズとオーバーラップによる再帰的文字分割
-- **構造化チャンキング** - parser が sections を返す場合、見出し階層・ページ情報・表の境界をできるだけ保ったままチャンク化します
-- **コンテキスト拡張** - 各ヒットに隣接チャンクを追加して、より豊かな検索コンテキストを返せます
-- **ドキュメント管理** - ドキュメント単位でインデックス済みベクトルを削除
+- **外部 Parser 連携**: GeneralParsers などの Parser プラグインが提供する事前解析済みコンテンツを優先的に利用し、構造化された `sections` と文書 `metadata` を取り込みます
+- **内蔵パーサーによるフォールバック**: 外部 Parser が設定されていない場合でも、プラグイン内蔵のパーサーにフォールバックできます
+- **複数のインデックス戦略**: フラットチャンク、親子チャンク、LLM 生成の Q&A ペアに対応します
+- **柔軟な検索方式**: ベクトル検索、全文検索、ハイブリッド検索に対応します
+- **クエリ書き換え**: HyDE、Multi-Query、Step-Back により recall を改善できます
+- **設定可能なチャンク分割**: チャンクサイズとオーバーラップを指定した再帰的な文字分割に対応します
+- **構造を意識したチャンク分割**: Parser が sections を返す場合、見出し階層、ページ情報、表の境界をできるだけ保持します
+- **コンテキスト拡張**: 各ヒットに隣接チャンクを追加し、より完全な検索コンテキストを返せます
+- **再ランキング**: LangBot rerank モデルまたは LLM による候補結果の再ランキングに対応します
+- **ドキュメント管理**: ドキュメント単位でインデックス済みベクトルを削除できます
+- **Observability ページ**: 取り込み、検索、削除、Embedding などの運用指標と診断情報を確認できます
 
 ## アーキテクチャ
 
-```
+```text
 ┌─────────────────────────────────┐
 │         LangBot Core            │
 │  (Embedding / VDB / Storage)    │
@@ -27,74 +29,95 @@ LangBot 向け RAG（検索拡張生成）エンジンプラグイン。
 ┌──────────▼──────────────────────┐
 │          LangRAG                │
 │  ┌───────────────────────────┐  │
-│  │     ナレッジエンジン        │  │
-│  │  解析 → チャンク → 埋込   │  │
-│  │      → 保存 / 検索        │  │
+│  │       Knowledge Engine    │  │
+│  │  Parse → Chunk → Embed   │  │
+│  │      → Store / Search    │  │
 │  └───────────────────────────┘  │
 └─────────────────────────────────┘
 ```
 
-## 取り込みフロー
+## ドキュメント取り込みフロー
 
-LangRAG は現在、LangBot Host が提供する parser の結果を優先して利用します。
+LangRAG は、LangBot Host が提供する Parser 出力を優先して利用します。
 
-1. LangBot がアップロードされたファイルを読み取る
-2. GeneralParsers などの Parser プラグインが `text`、`sections`、`metadata` を抽出する
-3. LangRAG がその構造化結果をそのまま取り込む
-4. parser の出力がない場合のみ、LangRAG の内蔵パーサーへフォールバックする
-5. 選択されたインデックス戦略で chunks または Q&A ペアを構築する
-6. LangBot Host が embedding を生成し、ベクトルを保存する
+1. LangBot がアップロードされたファイルを読み取ります。
+2. GeneralParsers などの Parser プラグインが `text`、`sections`、`metadata` を抽出します。
+3. LangRAG がその構造化された解析結果を直接取り込みます。
+4. Parser 出力がない場合は、LangRAG の内蔵パーサーにフォールバックします。
+5. 選択されたインデックス戦略に従って chunks または Q&A ペアを作成します。
+6. LangBot Host が embedding を生成し、ベクトルデータベースへ保存します。
 
-そのため、LangRAG は外部 Parser プラグインと組み合わせて使うと、一般により良い結果になります。
+そのため、LangRAG は外部 Parser プラグインと組み合わせて使うことを推奨します。PDF、表、多ページ文書、OCR、画像説明を含むケースでは、外部 Parser によりチャンク品質と検索品質が向上しやすくなります。
 
 ## 設定
 
 ### ナレッジベース作成
 
 | パラメータ | 説明 | デフォルト |
-|-----------|------|-----------|
-| `embedding_model_uuid` | Embedding モデル | 必須 |
-| `index_type` | インデックス戦略：`chunk`、`parent_child`、または `qa` | `chunk` |
-| `chunk_size` | チャンクあたりの文字数 | 512 |
-| `overlap` | チャンク間のオーバーラップ | 50 |
-| `parent_chunk_size` | 親チャンクサイズ（parent_child のみ） | 2048 |
-| `child_chunk_size` | 子チャンクサイズ（parent_child のみ） | 256 |
-| `qa_llm_model_uuid` | Q&A 生成用 LLM（qa のみ） | - |
-| `questions_per_chunk` | チャンクごとに生成する質問数（qa のみ） | 1 |
+| --- | --- | --- |
+| `embedding_model_uuid` | テキストをベクトル化する Embedding モデル | 必須 |
+| `index_type` | インデックス戦略: `chunk`、`parent_child`、または `qa` | `chunk` |
+| `chunk_size` | 1 チャンクあたりの文字数 | `512` |
+| `overlap` | チャンク間のオーバーラップ文字数 | `50` |
+| `parent_chunk_size` | 親チャンクサイズ。`parent_child` モードのみで使用 | `2048` |
+| `child_chunk_size` | 子チャンクサイズ。`parent_child` モードのみで使用 | `256` |
+| `qa_llm_model_uuid` | Q&A ペア生成に使う LLM。`qa` モードのみで使用 | 空 |
+| `questions_per_chunk` | 1 チャンクあたりに生成する質問数。`qa` モードのみで使用 | `1` |
 
 ### 検索
 
 | パラメータ | 説明 | デフォルト |
-|-----------|------|-----------|
-| `top_k` | 返す結果の数 | 5 |
-| `search_type` | 検索モード：`vector`、`full_text`、または `hybrid` | `vector` |
-| `query_rewrite` | 書き換え戦略：`off`、`hyde`、`multi_query`、または `step_back` | `off` |
-| `rewrite_llm_model_uuid` | クエリ書き換え用 LLM（書き換え有効時） | - |
-| `context_window` | 各ヒットに追加する前後の隣接チャンク数 | 0 |
+| --- | --- | --- |
+| `top_k` | 返す検索結果の件数 | `5` |
+| `search_type` | 検索モード: `vector`、`full_text`、または `hybrid` | `vector` |
+| `vector_weight` | ハイブリッド検索におけるベクトル検索の重み。`0.0` はキーワードのみ、`1.0` はベクトルのみ | `0.7` |
+| `query_rewrite` | クエリ書き換え戦略: `off`、`hyde`、`multi_query`、または `step_back` | `off` |
+| `rewrite_llm_model_uuid` | クエリ書き換えに使う LLM。書き換え有効時に使用 | 空 |
+| `rerank` | 再ランキング戦略: `off`、`rerank_model`、または `llm` | `off` |
+| `rerank_model_uuid` | 候補結果の再ランキングに使う LangBot rerank モデル | 空 |
+| `rerank_llm_model_uuid` | LLM 再ランキングに使うモデル | 空 |
+| `context_window` | 各ヒットに追加する隣接チャンク数 | `0` |
 
 ## インデックス戦略
 
-- **chunk** - デフォルトのフラットチャンキング。ドキュメントを固定サイズのチャンクに分割し、各チャンクを直接埋め込みます。parser から sections が渡された場合は、文書全体を平坦化せず、section 単位でチャンク化します。
-- **parent_child** - 二段階チャンキング。大きな親チャンクに分割した後、さらに小さな子チャンクに分割します。子チャンクを埋め込みますが、より豊富なコンテキストのために親チャンクのテキストを返します。sections がある場合は、それを自然な親チャンク境界として利用します。
-- **qa** - LLM 生成の Q&A ペア。テキストをチャンクに分割し、LLM を使用してチャンクごとに質問と回答のペアを生成し、質問を埋め込みます。sections がある場合、Q&A 生成も section を意識した形で行われます。
+- **chunk**: デフォルトのフラットチャンク方式です。ドキュメントを固定サイズの chunk に分割し、各 chunk を直接 embedding します。Parser が sections を提供している場合は、文書全体を平坦化せず section 境界に沿って分割します。
+- **parent_child**: 親子 2 段階のチャンク方式です。まず大きな親チャンクへ分割し、次に小さな子チャンクへ分割します。子チャンクを embedding し、検索ヒット時にはより広い文脈を含む親チャンクのテキストを返します。sections がある場合は自然な親チャンク境界として利用します。
+- **qa**: LLM による Q&A ペア生成方式です。テキストを chunk に分割した後、LLM で各 chunk から質問と回答のペアを生成し、質問を embedding します。ユーザーの問い合わせが質問形式に近い場合や、原文が長く答えが分散している場合に有効です。
 
 ## クエリ書き換え
 
-- **hyde** - 仮説的ドキュメント埋め込み。クエリに対する仮説的な回答を生成し、その回答を埋め込んで検索に使用します。
-- **multi_query** - 3 つのクエリバリアントを生成し、それぞれで検索を行い、スコアで結果をマージします。
-- **step_back** - より抽象的な質問を生成し、元のクエリと抽象的なクエリの両方で検索します。
+- **hyde**: Hypothetical Document Embedding。クエリに対する仮説的な回答を LLM で生成し、その回答を embedding して検索します。
+- **multi_query**: 3 つのクエリバリエーションを生成し、それぞれで検索した結果をスコアで統合します。
+- **step_back**: より抽象的な質問を生成し、元のクエリと抽象化されたクエリの両方で検索します。
+
+クエリ書き換えは LLM 呼び出しコストを増やします。recall が不足する場合、ユーザーの質問表現が不安定な場合、またはナレッジベースが複雑な場合に有効化するのが適しています。
 
 ## GeneralParsers との組み合わせ
 
-現在、LangRAG と組み合わせる Parser としては GeneralParsers を推奨しています。GeneralParsers は次のような情報を提供できます。
+現時点では、LangRAG と組み合わせる Parser として GeneralParsers を推奨します。GeneralParsers は次のような情報を提供できます。
 
 - よりクリーンな PDF テキスト抽出
 - 構造化された sections
-- 表構造を保ったテキスト
+- 表構造を保持したテキスト
 - 文書レベルの metadata
-- 視覚モデルによる OCR や画像説明（任意）
+- 視覚モデルを使った任意の OCR と画像説明
 
-LangRAG はこれらの parser 出力を取り込み時に直接利用するため、内蔵 fallback parser よりも良いチャンク品質と検索品質につながることが多いです。
+LangRAG は取り込み時にこれらの Parser 出力を直接利用します。内蔵 fallback parser だけを使う場合と比べて、より良い chunk 構造、より正確な検索結果、より明確な引用コンテキストを得られることが多いです。
+
+## Observability ページ
+
+LangRAG には **Observability** という WebUI ページがあります。最近の取り込み、検索、削除、embedding イベントに加えて、本番運用向けの診断情報を表示します。
+
+- 1 分、5 分、1 時間のウィンドウにおける操作数、レート、エラー率、ゼロ結果率
+- 平均レイテンシ、および p50 / p95 / p99 / max レイテンシ
+- 取り込みと検索の各ステージの所要時間。parser、chunking、embedding、vector search、rerank、context expansion、vector upsert などを含みます
+- 検索品質シグナル。ゼロ結果率、Top-K 充足率、参照カバレッジ、rerank 使用状況、フィルタ付きクエリ率などを含みます
+- アクティブなアラート。高エラー率、検索ゼロ結果の増加、p95 レイテンシ悪化、永続化問題などを検出します
+- プライバシーに配慮したイベントデータ。元の query テキストは保存せず、query、document、collection の識別子は可能な限り hash で表します
+
+デフォルトでは、テレメトリーイベントは `data/observability/langrag-events.jsonl` に追記されます。そのため、プラグイン再起動後も直近の診断データを保持できます。保存ディレクトリは `LANGRAG_OBSERVABILITY_DIR` で上書きできます。また、`LANGRAG_INSTANCE_ID` を設定すると特定の実行インスタンスを識別できます。
+
+ページバックエンドは LangBot Page API 経由で `/snapshot`、`/export`、`/clear`、`/metrics` も提供します。`/metrics` は Prometheus text format を返すため、外部監視スタックへ接続できます。
 
 ## 開発
 
@@ -103,8 +126,42 @@ pip install -r requirements.txt
 cp .env.example .env
 ```
 
-`.env` で `DEBUG_RUNTIME_WS_URL` と `PLUGIN_DEBUG_KEY` を設定し、IDE デバッガーで起動してください。
+`.env` に `DEBUG_RUNTIME_WS_URL` と `PLUGIN_DEBUG_KEY` を設定し、IDE のデバッガーから起動してください。
+
+### テスト
+
+```bash
+python3 -m unittest discover -s tests
+```
+
+### オフライン Benchmark
+
+```bash
+python3 -m benchmarks.run
+```
+
+Benchmark データセット、実験設定、決定的なローカルアダプター、メトリクスコードは `benchmarks/` にあります。実行結果は `benchmarks/runs/` 配下の追跡可能な `results.json` に書き込まれます。
+
+隣接する `langbot-parser` リポジトリと組み合わせて Parser 連携を benchmark できます。
+
+```bash
+python3 -m benchmarks.run \
+  --dataset benchmarks/datasets/parser_compare_zh.json \
+  --config benchmarks/configs/parser_compare.json
+```
+
+より難しい multi-hop 検索ケースも利用できます。
+
+```bash
+python3 -m benchmarks.run \
+  --dataset benchmarks/datasets/hard_multihop_zh.json \
+  --config benchmarks/configs/hard_retrieval.json
+```
 
 ## リンク
 
 - [LangBot ドキュメント](https://docs.langbot.app/)
+
+## コントリビューション
+
+issue、pull request、ドキュメント改善、利用フィードバックを歓迎します。このプラグインが役に立った場合は、リポジトリへの star も歓迎します。
