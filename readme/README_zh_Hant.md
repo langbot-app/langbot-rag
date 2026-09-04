@@ -107,4 +107,4 @@ cp .env.example .env
 
 ## 連結
 
-- [LangBot 文件](https://docs.langbot.app/)
+- [LangBot 文件](https://langbot.app/docs/)

@@ -168,7 +168,7 @@ python3 -m benchmarks.run \
 
 ## Links
 
-- [LangBot Documentation](https://docs.langbot.app/)
+- [LangBot Documentation](https://langbot.app/docs/)
 
 ## Contributing
 

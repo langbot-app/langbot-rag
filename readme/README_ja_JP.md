@@ -160,7 +160,7 @@ python3 -m benchmarks.run \
 
 ## リンク
 
-- [LangBot ドキュメント](https://docs.langbot.app/)
+- [LangBot ドキュメント](https://langbot.app/docs/)
 
 ## コントリビューション
 
