@@ -107,4 +107,4 @@ Configure`DEBUG_RUNTIME_WS_URL`y`PLUGIN_DEBUG_KEY`en`.env`, luego ejecútelo con
 
 ## Enlaces
 
-- [Documentación de LangBot](https://docs.langbot.app/)
+- [Documentación de LangBot](https://langbot.app/docs/)

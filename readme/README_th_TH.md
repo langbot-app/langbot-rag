@@ -107,4 +107,4 @@ cp .env.example .env
 
 ## ลิงค์
 
-- [เอกสาร LangBot](https://docs.langbot.app/)
+- [เอกสาร LangBot](https://langbot.app/docs/)

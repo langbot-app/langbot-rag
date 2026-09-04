@@ -160,7 +160,7 @@ python3 -m benchmarks.run \
 
 ## 链接
 
-- [LangBot 文档](https://docs.langbot.app/)
+- [LangBot 文档](https://langbot.app/docs/)
 
 ## 参与贡献
 
