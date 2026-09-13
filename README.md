@@ -1,3 +1,7 @@
+> **Moved:** Development continues in [langbot-plugins/KnowledgeEngine/LangRAG](https://github.com/langbot-app/langbot-plugins/tree/main/KnowledgeEngine/LangRAG). Please submit changes and new issues there. This repository is retained for its history and existing issues.
+>
+> **已迁移：** 后续开发请前往 [langbot-plugins/KnowledgeEngine/LangRAG](https://github.com/langbot-app/langbot-plugins/tree/main/KnowledgeEngine/LangRAG)。本仓库保留历史记录和已有 Issue。
+
 # LangRAG
 
 RAG (Retrieval-Augmented Generation) Engine plugin for LangBot.
